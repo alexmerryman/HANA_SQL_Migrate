@@ -1,14 +1,6 @@
 import xml.etree.ElementTree as ET
 import re
 
-"""
-just dump filters, formulas into the SQL script, can be manually changed later
-
-for object tagged 'calculatedviewattributes':
-expressionLanguage="COLUMN_ENGINE" is HANA syntax
-expressionLanguage="SQL" is SQL syntax, can be used directly (replace &quot; with ' -- or delete/ignore entirely)
-"""
-
 
 def get_root_obj(xmlfile):
     tree = ET.parse(xmlfile)
@@ -22,9 +14,15 @@ def get_calculationView_objs(xml_tree):
     :param xml_tree:
     :return:
     """
+    # TODO: CalculationView types: (c.attrib['xsi:type']) = ['Calculation:ProjectionView', 'Calculation:JoinView', 'Calculation:AggregationView', 'Calculation:UnionView']
+    calc_view_type_dict = {}
     calc_view_objs = xml_tree.find('calculationViews')
     calc_view_obj_ids = [c.attrib['id'] for c in calc_view_objs] # TODO: Remove hashtag from beginning of obj_id?
-    return calc_view_objs, calc_view_obj_ids
+
+    for c in calc_view_objs:
+        calc_view_type_dict[c.attrib['id']] = c.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"] # TODO: Will this key name remain constant in the future?
+
+    return calc_view_objs, calc_view_obj_ids, calc_view_type_dict
 
 
 def get_input_nodes(calc_view_obj):
@@ -60,7 +58,7 @@ def get_joins(calc_view_objs):
     return join_objs
 
 
-def parse_aliased_join_key(raw_key):
+def parse_aliased_key(raw_key):
     left_table_keyname = re.search("(?:\$)(\w*)(?:\$)", raw_key)[1]
     right_table_keyname = re.search("(?:\$)(\w*)$", raw_key)[1]
     return left_table_keyname, right_table_keyname
@@ -79,7 +77,7 @@ def parse_join(join_calc_view_obj):
     join_key_phrases = []
     for k in join_keys:
         if '$' in k:
-            left_table_keyname, right_table_keyname = parse_aliased_join_key(k)
+            left_table_keyname, right_table_keyname = parse_aliased_key(k)
         else:
             left_table_keyname = k
             right_table_keyname = k
@@ -101,6 +99,34 @@ def parse_join(join_calc_view_obj):
 
     return join_str
 
+
+def get_formulas(calc_view_obj):
+    """
+    expressionLanguage="COLUMN_ENGINE" is HANA syntax
+    expressionLanguage="SQL" is SQL syntax, can be used directly (replace &quot; with ' -- or delete/ignore entirely)
+
+    :param calc_view_obj:
+    :return:
+    """
+    formula_dict = {}
+    calcviewattribs = calc_view_obj.findall('calculatedViewAttributes')
+    for c in calcviewattribs:
+        attrib_objs = c.findall('calculatedViewAttribute')
+        if len(attrib_objs) == 0:
+            pass
+        else:
+            # print(attrib_objs)
+            for a in attrib_objs:
+                a_id = a.attrib['id']
+                expr_lang = a.attrib['expressionLanguage']
+                formula_obj = a.find('formula') # Assume only 1 formula per calculationViewAttribute object?
+                formula_text = formula_obj.text
+
+                formula_dict["calculatedViewAttribute_id"] = a_id
+                formula_dict["formula"] = formula_text
+
+    return formula_dict
+
 # ======================================================================================================================
 def get_parse_node_mappings(node_obj):
     """
@@ -114,11 +140,17 @@ def get_parse_node_mappings(node_obj):
     mappings = node_obj.findall('mapping')
     mappings_str_list = []
     for m in mappings:
-        mapping_source = m.attrib['source']
+
+        # 'source' NOT in m.attrib.keys() for mappings with x.attrib['xsi:type'] = "Calculation:ConstantAttributeMapping"
+        if 'source' in m.attrib.keys():
+            mapping_source = m.attrib['source']
+        else:
+            mapping_source = None
+
         mapping_target = m.attrib['target']
 
         if mapping_source != mapping_target:
-            mapping_str = f"{mapping_source} as {mapping_target}"
+            mapping_str = f"{mapping_source} as {mapping_target}" # TODO: Fix instances of None source; currently prints as "None as PAYM_CART_STATUS"
         else:
             mapping_str = f"{mapping_source}"
 
@@ -130,6 +162,7 @@ def get_parse_node_mappings(node_obj):
 def parse_calc_views(calc_view_obj):
     node_mappings_dict = {}
     node_objs, node_obj_ids = get_input_nodes(calc_view_obj)
+    # print('node_obj_ids:', node_obj_ids)
     for n in node_objs:
         mappings_str_list = get_parse_node_mappings(n)
         node_mappings_dict[n.attrib['node']] = mappings_str_list
@@ -164,31 +197,43 @@ def compile_calc_view_string(calc_view_name, node_select_dict):
 
 def full_tree_parse(xmlfile):
     tree, root = get_root_obj(xmlfile)
-    calc_view_objs, calc_view_obj_ids = get_calculationView_objs(tree)
+    calc_view_objs, calc_view_obj_ids, calc_view_type_dict = get_calculationView_objs(tree)
+    # TODO: Execute different logic based on ['Calculation:ProjectionView', 'Calculation:JoinView', 'Calculation:AggregationView', 'Calculation:UnionView']
 
-    print('JOINS')
-    join_objs_list = get_joins(calc_view_objs) # TODO: Reformat to search within 1 calc view at a time
+    print('--- JOINS ---')
+    join_objs_list = get_joins(calc_view_objs) # TODO: Reformat to search within 1 calc view at a time?
+    join_txt_dict = {}
     for j in join_objs_list:
         join_str = parse_join(j)
-        print(join_str)
+        join_txt_dict[j.attrib['id']] = join_str
+        print(f"{j.attrib['id']}: {join_str}")
 
-    print('FILTERS')
     for c in calc_view_objs:
-        # TODO: Find all joins associated with the calc view
-        # TODO: Find all filters associated with the calc view
+        calc_view_obj_id = c.attrib['id']
+        print(f"\n===== CALCULATION VIEW: {calc_view_obj_id} =====")
+        print(f"Calculation Type: {calc_view_type_dict[calc_view_obj_id]}")
+        print('--- FORMULAS ---')
+        formula_dict = get_formulas(c)
+        if formula_dict:
+            print(formula_dict)
+
+        print('--- FILTERS ---')
         filters = get_filters(c)
         filters_text = []
         if filters:
             for f in filters:
                 filters_text.append(parse_filter(f))
+        if len(filters_text) > 0:
+            # print(["\n".join(f) for f in filters_text])
+            print(filters_text)
 
-    # for c in calc_view_objs:
-    #     print(f"CALCULATION VIEW: {c.attrib['id']}")
-    #     node_mappings_dict = parse_calc_views(c)
-    #     node_select_dict = compile_node_mappings_string(node_mappings_dict)
-    #     # print(node_select_dict)
-    #     calc_view_select_dict = compile_calc_view_string(c.attrib['id'], node_select_dict)
-    #     print(calc_view_select_dict)
+        print('--- NODES ---')
+        node_mappings_dict = parse_calc_views(c)
+        print(node_mappings_dict)
+        node_select_dict = compile_node_mappings_string(node_mappings_dict)
+        # print(node_select_dict)
+        calc_view_select_dict = compile_calc_view_string(calc_view_obj_id, node_select_dict)
+        print(calc_view_select_dict)
 
     # print('================================')
     # print('LOGICAL MODELS:')
