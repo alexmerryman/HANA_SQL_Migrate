@@ -1,7 +1,60 @@
 import xml.etree.ElementTree as ET
 import re
 
+# TODO: Execute calculation:scenario.attrib.keys() to get the actual key names
+"""
+*.calculationview XML structure:
 
+calculation:scenario (root)
+    {calculation:scenario}.attrib['http://www.w3.org/2001/XMLSchema-instance']
+    {calculation:scenario}.attrib['xmlns:Calculation']
+    {calculation:scenario}.attrib['schemaVersion']
+    {calculation:scenario}.attrib['id']
+    {calculation:scenario}.attrib['applyPrivilegeType']
+    {calculation:scenario}.attrib['checkAnalyticPrivileges']
+    {calculation:scenario}.attrib['defaultClient']
+    {calculation:scenario}.attrib['defaultLanguage']
+    {calculation:scenario}.attrib['visibility']
+    {calculation:scenario}.attrib['calculationScenarioType']
+    {calculation:scenario}.attrib['dataCategory']
+    {calculation:scenario}.attrib['enforceSqlExecution']
+    {calculation:scenario}.attrib['executionSemantic']
+    {calculation:scenario}.attrib['outputViewType']
+    origin
+    descriptions
+        {descriptions}.attrib['defaultDescription']
+    metadata
+        {metadata}.attrib['changedAt']
+    localvariables
+    variablemappings
+    datasources
+        ...
+    calculationviews
+        calculationview
+            {calculationview}.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"]
+            {calculationview}.attrib["id"]
+            {calculationview}.attrib['cardinality'] --optional, only for {calculationview}.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"] == 'Calculation:JoinView'
+            {calculationview}.attrib['joinType'] --optional, only for {calculationview}.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"] == 'Calculation:JoinView'
+            viewattributes
+                viewattribute
+                    {viewattribute}.attrib['id']
+            calculatedviewattributes
+                calculatedviewattribute
+                    {calculatedviewattribute}.attrib['datatype']
+                    {calculatedviewattribute}.attrib['id']
+                    {calculatedviewattribute}.attrib['length']
+                    formula --optional
+            input
+                {input}.attrib['node']
+                mapping
+                    {mapping}.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"]
+                    {mapping}.attrib['target']
+                    {mapping}.attrib['source']
+            joinattribute --optional, only for Calculation:JoinView
+                {joinattribute}.attrib['name']
+    logicalmodel
+        ...
+"""
 def get_root_obj(xmlfile):
     tree = ET.parse(xmlfile)
     root = tree.getroot()
@@ -21,6 +74,7 @@ def get_calculationView_objs(xml_tree):
 
     for c in calc_view_objs:
         calc_view_type_dict[c.attrib['id']] = c.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"] # TODO: Will this key name remain constant in the future?
+        # TODO: Get this string from {calculation:scenario}.attrib['http://www.w3.org/2001/XMLSchema-instance']
 
     return calc_view_objs, calc_view_obj_ids, calc_view_type_dict
 
