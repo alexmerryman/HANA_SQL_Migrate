@@ -6,7 +6,7 @@ import re
 *.calculationview XML structure:
 
 calculation:scenario (root)
-    {calculation:scenario}.attrib['http://www.w3.org/2001/XMLSchema-instance']
+    {calculation:scenario}.attrib['xmlns:xsi']
     {calculation:scenario}.attrib['xmlns:Calculation']
     {calculation:scenario}.attrib['schemaVersion']
     {calculation:scenario}.attrib['id']
@@ -74,7 +74,7 @@ def get_calculationView_objs(xml_tree):
 
     for c in calc_view_objs:
         calc_view_type_dict[c.attrib['id']] = c.attrib["{http://www.w3.org/2001/XMLSchema-instance}type"] # TODO: Will this key name remain constant in the future?
-        # TODO: Get this string from {calculation:scenario}.attrib['http://www.w3.org/2001/XMLSchema-instance']
+        # TODO: Get this string from {calculation:scenario}.attrib['xmlns:xsi']
 
     return calc_view_objs, calc_view_obj_ids, calc_view_type_dict
 
